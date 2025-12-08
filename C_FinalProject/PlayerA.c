@@ -28,9 +28,12 @@
  * * =================================================================================================
  */
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "api.h"
 #include <stdlib.h> 
 #include <stdio.h> 
+#include <string.h> 
 
 
  // =================================================================================================
@@ -84,7 +87,103 @@ int simple_killer_ai(const Player* my_info, const Player* opponent_info) {
 
 
 // =================================================================================================
-// [학생 구현 영역 2] 시스템 진입 및 해금 영역
+// [학생 구현 영역 2] 퍼즐 풀이 로직
+// =================================================================================================
+
+#define MAX_LINE_LENGTH 256
+#define MAX_ITEMS 30
+#define MAX_NAME_LENGTH 50
+
+// CMD_POISON 스킬 해금을 위한 퍼즐 풀이 함수
+const char* skill_1() {
+    // 정답 문자열을 저장할 static 버퍼
+    static char final_answer[MAX_LINE_LENGTH] = "";
+    
+    FILE* file = fopen("E:/C_FinalProject/C_FinalProject/AI1-2_C_Final.csv", "r");
+    if (file == NULL) {
+        perror("Error opening file C_FinalProject/AI1-2_C_Final.csv");
+        return ""; // 파일 열기 실패 시 빈 문자열 반환
+    }
+
+    char line[MAX_LINE_LENGTH];
+    // 아이템 이름을 동적으로 저장할 포인터 배열
+    char* matching_names[MAX_ITEMS];
+    int matching_count = 0;
+
+    // 헤더 라인 건너뛰기
+    if (fgets(line, sizeof(line), file) == NULL) {
+        fclose(file);
+        return "";
+    }
+
+    // 파일 끝까지 한 줄씩 읽기
+    while (fgets(line, sizeof(line), file) != NULL && matching_count < MAX_ITEMS) {
+        char* context = NULL; // strtok_s를 위한 context
+        char* token;
+        int atk, def, hp;
+        char name[MAX_NAME_LENGTH];
+        
+        // 원본 line은 보존하고, 복사본을 strtok_s에 사용
+        char line_copy[MAX_LINE_LENGTH];
+        strncpy(line_copy, line, MAX_LINE_LENGTH - 1);
+        line_copy[MAX_LINE_LENGTH - 1] = '\0';
+
+        // ID
+        token = strtok_s(line_copy, ",", &context);
+        if (token == NULL) continue;
+
+        // NAME
+        token = strtok_s(NULL, ",", &context);
+        if (token == NULL) continue;
+        strncpy(name, token, MAX_NAME_LENGTH - 1);
+        name[MAX_NAME_LENGTH - 1] = '\0';
+        
+        // SLOT
+        token = strtok_s(NULL, ",", &context);
+        if (token == NULL) continue;
+        
+        // ATK
+        token = strtok_s(NULL, ",", &context);
+        if (token == NULL) continue;
+        atk = atoi(token);
+
+        // DEF
+        token = strtok_s(NULL, ",", &context);
+        if (token == NULL) continue;
+        def = atoi(token);
+
+        // HP
+        token = strtok_s(NULL, ",", &context);
+        if (token == NULL) continue;
+        hp = atoi(token);
+
+        // 조건 확인: ATK >= 4, DEF <= 5, HP <= 100
+        if (atk >= 4 && def <= 5 && hp <= 100) {
+            // 조건에 맞는 아이템 이름을 동적 할당하여 저장
+            matching_names[matching_count] = _strdup(name);
+            if (matching_names[matching_count] != NULL) {
+                matching_count++;
+            }
+        }
+    }
+    fclose(file);
+
+    // 찾은 아이템들을 역순으로 | 기호와 함께 조합
+    final_answer[0] = '\0'; // 버퍼 초기화
+    for (int i = matching_count - 1; i >= 0; i--) {
+        strcat(final_answer, matching_names[i]);
+        if (i > 0) {
+            strcat(final_answer, "|");
+        }
+        free(matching_names[i]); // 동적 할당된 메모리 해제
+    }
+
+    return final_answer;
+}
+
+
+// =================================================================================================
+// [학생 구현 영역 3] 시스템 진입 및 해금 영역
 // =================================================================================================
 
 // 이 함수는 main.c에서 extern으로 호출되는 학생 코드의 진입점입니다.
@@ -95,15 +194,12 @@ void student1_ai_entry() {
     int my_secret_key = register_player_ai("TEAM-ALPHA", simple_killer_ai);
 
     // ------------------------------------------------------------------
-    // [COMMAND UNLOCK SECTION] 
-    // 학생은 아래의 코드를 복사하여 필요한 스킬 수만큼 반복해야 합니다.
-    // ------------------------------------------------------------------
 
-    attempt_skill_unlock(my_secret_key, CMD_POISON, "Ancient_Relic|Doom_Greatsword|Immortal_Sword");
+    // 1. 퍼즐 풀이 함수를 호출하여 동적으로 정답을 얻음
+    const char* poison_answer = skill_1();
+    attempt_skill_unlock(my_secret_key, CMD_POISON, poison_answer);
     if (is_skill_unlocked(my_secret_key, CMD_POISON))
         printf("TEAM-ALPHA : CMD_POISON 해금 완료\n");
-    else
-        printf("TEAM-ALPHA : CMD_POISON 해금 실패 ㅜㅜ\n");
 
     attempt_skill_unlock(my_secret_key, CMD_STRIKE, "2key");
     if (is_skill_unlocked(my_secret_key, CMD_STRIKE))
