@@ -94,36 +94,38 @@ int simple_killer_ai(const Player* my_info, const Player* opponent_info) {
 #define MAX_ITEMS 30
 #define MAX_NAME_LENGTH 50
 
-// CMD_POISON 스킬 해금을 위한 퍼즐 풀이 함수
-const char* skill_1() {
-    // 정답 문자열을 저장할 static 버퍼
-    static char final_answer[MAX_LINE_LENGTH] = "";
-    
-    FILE* file = fopen("E:/C_FinalProject/C_FinalProject/AI1-2_C_Final.csv", "r");
+// 아이템 데이터 구조체
+typedef struct {
+    char name[MAX_NAME_LENGTH];
+    char slot[10];
+    int atk;
+    int def;
+    int hp;
+    char key_frag[MAX_LINE_LENGTH];
+} ItemData;
+
+// 파일 읽기
+static int read_csv_file(const char* filename, ItemData items[], int max_items) {
+    FILE* file = fopen(filename, "r");
     if (file == NULL) {
-        perror("Error opening file C_FinalProject/AI1-2_C_Final.csv");
-        return ""; // 파일 열기 실패 시 빈 문자열 반환
+        perror("Error opening file");
+        return 0;
     }
 
     char line[MAX_LINE_LENGTH];
-    // 아이템 이름을 동적으로 저장할 포인터 배열
-    char* matching_names[MAX_ITEMS];
-    int matching_count = 0;
+    int item_count = 0;
 
     // 헤더 라인 건너뛰기
     if (fgets(line, sizeof(line), file) == NULL) {
         fclose(file);
-        return "";
+        return 0;
     }
 
     // 파일 끝까지 한 줄씩 읽기
-    while (fgets(line, sizeof(line), file) != NULL && matching_count < MAX_ITEMS) {
-        char* context = NULL; // strtok_s를 위한 context
+    while (fgets(line, sizeof(line), file) != NULL && item_count < max_items) {
+        char* context = NULL;
         char* token;
-        int atk, def, hp;
-        char name[MAX_NAME_LENGTH];
-        
-        // 원본 line은 보존하고, 복사본을 strtok_s에 사용
+
         char line_copy[MAX_LINE_LENGTH];
         strncpy(line_copy, line, MAX_LINE_LENGTH - 1);
         line_copy[MAX_LINE_LENGTH - 1] = '\0';
@@ -135,49 +137,112 @@ const char* skill_1() {
         // NAME
         token = strtok_s(NULL, ",", &context);
         if (token == NULL) continue;
-        strncpy(name, token, MAX_NAME_LENGTH - 1);
-        name[MAX_NAME_LENGTH - 1] = '\0';
-        
+        strncpy(items[item_count].name, token, MAX_NAME_LENGTH - 1);
+        items[item_count].name[MAX_NAME_LENGTH - 1] = '\0';
+
         // SLOT
         token = strtok_s(NULL, ",", &context);
         if (token == NULL) continue;
-        
+        strncpy(items[item_count].slot, token, sizeof(items[item_count].slot) - 1);
+        items[item_count].slot[sizeof(items[item_count].slot) - 1] = '\0';
+
         // ATK
         token = strtok_s(NULL, ",", &context);
         if (token == NULL) continue;
-        atk = atoi(token);
+        items[item_count].atk = atoi(token);
 
         // DEF
         token = strtok_s(NULL, ",", &context);
         if (token == NULL) continue;
-        def = atoi(token);
+        items[item_count].def = atoi(token);
 
         // HP
         token = strtok_s(NULL, ",", &context);
         if (token == NULL) continue;
-        hp = atoi(token);
+        items[item_count].hp = atoi(token);
 
+        // CURSE (건너뛰기)
+        token = strtok_s(NULL, ",", &context);
+
+        // KEY_FRAG
+        token = strtok_s(NULL, ",\n", &context);
+        if (token != NULL) {
+            strncpy(items[item_count].key_frag, token, MAX_LINE_LENGTH - 1);
+            items[item_count].key_frag[MAX_LINE_LENGTH - 1] = '\0';
+        }
+        else {
+            items[item_count].key_frag[0] = '\0';
+        }
+
+        item_count++;
+    }
+    fclose(file);
+
+    return item_count;
+}
+
+// 퍼즐 1: 독 스킬 해금
+const char* skill_1() {
+    static char final_answer[MAX_LINE_LENGTH] = "";
+    ItemData items[MAX_ITEMS];
+
+    // 파일 읽기
+    int item_count = read_csv_file("AI1-2_C_Final.csv", items, MAX_ITEMS);
+    if (item_count == 0) {
+        return "";
+    }
+
+    // 조건에 맞는 아이템 찾기
+    char* matching_names[MAX_ITEMS];
+    int matching_count = 0;
+
+    for (int i = 0; i < item_count; i++) {
         // 조건 확인: ATK >= 4, DEF <= 5, HP <= 100
-        if (atk >= 4 && def <= 5 && hp <= 100) {
-            // 조건에 맞는 아이템 이름을 동적 할당하여 저장
-            matching_names[matching_count] = _strdup(name);
+        if (items[i].atk >= 4 && items[i].def <= 5 && items[i].hp <= 100) {
+            matching_names[matching_count] = _strdup(items[i].name);
             if (matching_names[matching_count] != NULL) {
                 matching_count++;
             }
         }
     }
-    fclose(file);
 
     // 찾은 아이템들을 역순으로 | 기호와 함께 조합
-    final_answer[0] = '\0'; // 버퍼 초기화
+    final_answer[0] = '\0';
     for (int i = matching_count - 1; i >= 0; i--) {
         strcat(final_answer, matching_names[i]);
         if (i > 0) {
             strcat(final_answer, "|");
         }
-        free(matching_names[i]); // 동적 할당된 메모리 해제
+        free(matching_names[i]);
     }
 
+    return final_answer;
+}
+
+// 퍼즐 2: 강타 스킬 해금
+const char* skill_2() {
+    static char final_answer[MAX_LINE_LENGTH] = "";
+    ItemData items[MAX_ITEMS];
+
+    // 파일 읽기
+    int item_count = read_csv_file("AI1-2_C_Final.csv", items, MAX_ITEMS);
+    if (item_count == 0) {
+        return "";
+    }
+
+    // SLOT이 "W"인 아이템들의 KEY_FRAG에서 'T' 위치 합산
+    int total_index_sum = 0;
+
+    for (int i = 0; i < item_count; i++) {
+        if (strcmp(items[i].slot, "W") == 0) {
+            char* t_pos = strchr(items[i].key_frag, 'T');
+            if (t_pos != NULL) {
+                total_index_sum += (int)(t_pos - items[i].key_frag);
+            }
+        }
+    }
+
+    sprintf(final_answer, "%dkey", total_index_sum);
     return final_answer;
 }
 
@@ -200,8 +265,11 @@ void student1_ai_entry() {
     attempt_skill_unlock(my_secret_key, CMD_POISON, poison_answer);
     if (is_skill_unlocked(my_secret_key, CMD_POISON))
         printf("TEAM-ALPHA : CMD_POISON 해금 완료\n");
+    else
+        printf("TEAM-ALPHA : CMD_POISON 해금 실패 ㅜㅜ\n");
 
-    attempt_skill_unlock(my_secret_key, CMD_STRIKE, "2key");
+    const char* strike_answer = skill_2();
+    attempt_skill_unlock(my_secret_key, CMD_STRIKE, strike_answer);
     if (is_skill_unlocked(my_secret_key, CMD_STRIKE))
         printf("TEAM-ALPHA : CMD_STRIKE 해금 완료\n");
     else
