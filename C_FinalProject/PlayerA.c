@@ -371,51 +371,62 @@ static const char* skill_4() {
     return final_answer;
 }
 
-// 퍼즐 5: 원거리공격 해금 문제 (정답 형식: \LOT,A\)
+// 퍼즐 5: 원거리 공격
 static const char* skill_5() {
     static char final_answer[MAX_LINE_LENGTH];
     final_answer[0] = '\0';
 
     const char* filename = pick_csv_filename();
-    if (filename == NULL) return final_answer;
+    if (!filename) {
+        return final_answer;
+    }
 
+    // 1) CSV 읽기
     ItemData items[MAX_ITEMS];
     int item_count = read_csv_file(filename, items, MAX_ITEMS);
-    if (item_count == 0) return final_answer;
+    if (item_count == 0) {
+        return final_answer;
+    }
 
-    // 1. KEY_FRAG == "K" 찾기
+    // 2) KEY_FRAG == "*K*"인 아이템의 HP 찾기
     int target_hp = -1;
     for (int i = 0; i < item_count; ++i) {
-        if (strcmp(items[i].key_frag, "K") == 0) {
+        if (strcmp(items[i].key_frag, "*K*") == 0) {
             target_hp = items[i].hp;
             break;
         }
     }
-    if (target_hp < 0) return final_answer;
+    if (target_hp < 0) {
+        return final_answer;
+    }
 
-    // 2. 파일에서 HP 바이트만큼 offset 이동 후 5바이트 읽기
+    // 3) 파일 열기
     FILE* f = fopen(filename, "rb");
-    if (!f) return final_answer;
+    if (!f) {
+        return final_answer;
+    }
 
-    if (fseek(f, target_hp, SEEK_SET) != 0) {
+    // 3-1) fseek 위치 조정 (HP - 1)
+    int offset = target_hp - 1;
+    if (offset < 0) offset = 0;
+
+    if (fseek(f, offset, SEEK_SET) != 0) {
         fclose(f);
         return final_answer;
     }
 
-    char buf[8] = { 0 };
-    size_t r = fread(buf, 1, 5, f);
+    // 4) 현재 위치에서 5글자 읽기
+    char raw[16] = { 0 };
+    size_t r = fread(raw, 1, 5, f);
     fclose(f);
 
-    if (r == 0) return final_answer;
+    raw[r] = '\0';
 
-    // 3. 문제 요구 정답: 앞뒤로 역슬래시(\) 삽입
-    // 예: \LOT,A\
-    // ※ 역슬래시 출력 위해 "\\" 사용
-    snprintf(final_answer, sizeof(final_answer), "\"%s\"", buf);
+    // 5) 최종 문자열 "xx" → \"xx\" 로 조합
+    snprintf(final_answer, sizeof(final_answer), "\"%s\"", raw);
 
     return final_answer;
 }
-
 
 // 퍼즐 6: 자폭 (Sword in NAME) -> build S of key_frags in order -> strtok by '*' and pick longest token
 static const char* skill_6() {
