@@ -15,49 +15,239 @@
  // [학생 구현 영역 1] AI 로직 구현부
  // =================================================================================================
 
- // 간단한 맨하탄 거리 계산 유틸리티 함수
+// 유틸리티 함수들
 static int calculate_distance(const Player* p1, const Player* p2) {
     int dx = abs(get_player_x(p1) - get_player_x(p2));
     int dy = abs(get_player_y(p1) - get_player_y(p2));
     return dx + dy;
 }
 
-// MP를 사용하지 않고 공격만 시도하는 AI 로직 (예시)
-int simple_killer_ai(const Player* my_info, const Player* opponent_info) {
-    int distance = calculate_distance(my_info, opponent_info);
+static int is_safe_position(int x, int y) {
+    return (x >= 0 && x < 15 && y >= 0 && y < 7);
+}
 
+static int get_escape_direction(const Player* my_info, const Player* opp_info) {
     int my_x = get_player_x(my_info);
-    int opp_x = get_player_x(opponent_info);
     int my_y = get_player_y(my_info);
-    int opp_y = get_player_y(opponent_info);
+    int opp_x = get_player_x(opp_info);
+    int opp_y = get_player_y(opp_info);
 
-    // 1. 공격 판정 
-    if (distance <= 1) {
-        return CMD_ATTACK;
+    // 상대로부터 멀어지는 방향 우선순위 계산
+    int dx = my_x - opp_x;
+    int dy = my_y - opp_y;
+
+    // X축 도망 우선
+    if (abs(dx) >= abs(dy)) {
+        if (dx > 0 && is_safe_position(my_x + 1, my_y)) return CMD_RIGHT;
+        if (dx < 0 && is_safe_position(my_x - 1, my_y)) return CMD_LEFT;
     }
 
-    // 2. 추격 이동 (X축 우선)
+    // Y축 도망
+    if (dy > 0 && is_safe_position(my_x, my_y + 1)) return CMD_DOWN;
+    if (dy < 0 && is_safe_position(my_x, my_y - 1)) return CMD_UP;
+
+    // 대안 방향
+    if (dx > 0 && is_safe_position(my_x + 1, my_y)) return CMD_RIGHT;
+    if (dx < 0 && is_safe_position(my_x - 1, my_y)) return CMD_LEFT;
+    if (dy > 0 && is_safe_position(my_x, my_y + 1)) return CMD_DOWN;
+    if (dy < 0 && is_safe_position(my_x, my_y - 1)) return CMD_UP;
+
+    return CMD_REST;
+}
+
+static int get_blink_escape(const Player* my_info, const Player* opp_info) {
+    int my_x = get_player_x(my_info);
+    int my_y = get_player_y(my_info);
+    int opp_x = get_player_x(opp_info);
+    int opp_y = get_player_y(opp_info);
+
+    int dx = my_x - opp_x;
+    int dy = my_y - opp_y;
+
+    // 2칸 점멸로 도망
+    if (abs(dx) >= abs(dy)) {
+        if (dx > 0 && is_safe_position(my_x + 2, my_y)) return CMD_BLINK_RIGHT;
+        if (dx < 0 && is_safe_position(my_x - 2, my_y)) return CMD_BLINK_LEFT;
+    }
+
+    if (dy > 0 && is_safe_position(my_x, my_y + 2)) return CMD_BLINK_DOWN;
+    if (dy < 0 && is_safe_position(my_x, my_y - 2)) return CMD_BLINK_UP;
+
+    return get_escape_direction(my_info, opp_info);
+}
+
+static int get_approach_direction(const Player* my_info, const Player* opp_info) {
+    int my_x = get_player_x(my_info);
+    int my_y = get_player_y(my_info);
+    int opp_x = get_player_x(opp_info);
+    int opp_y = get_player_y(opp_info);
+
+    // X축 우선 접근
     if (my_x != opp_x) {
-        if (my_x < opp_x) {
-            return CMD_RIGHT;
-        }
-        else {
-            return CMD_LEFT;
-        }
+        if (my_x < opp_x) return CMD_RIGHT;
+        else return CMD_LEFT;
     }
 
-    // 3. Y축 추격
+    // Y축 접근
     if (my_y != opp_y) {
-        if (my_y < opp_y) {
-            return CMD_DOWN;
+        if (my_y < opp_y) return CMD_DOWN;
+        else return CMD_UP;
+    }
+
+    return CMD_REST;
+}
+
+// 메인 AI 로직 - 치고 빠지기 전략 (독 상태 체크 제거)
+int advanced_hit_and_run_ai(const Player* my_info, const Player* opp_info) {
+    int distance = calculate_distance(my_info, opp_info);
+    int my_hp = get_player_hp(my_info);
+    int my_mp = get_player_mp(my_info);
+    int opp_hp = get_player_hp(opp_info);
+
+    // === 1단계: 긴급 상황 처리 ===
+
+    // HP 1 이하 긴급 회복
+    if (my_hp <= 1 && my_mp >= 1) {
+        return CMD_HEAL;
+    }
+
+    // HP 2 이하 긴급 상황
+    if (my_hp <= 2) {
+        if (my_mp >= 1) return CMD_HEAL;
+        if (distance <= 1) return get_escape_direction(my_info, opp_info);
+    }
+
+    // === 2단계: 독 전략 (거리 3-5에서 시전) ===
+    if (my_mp >= 4 && distance >= 3 && distance <= 5) {
+        // 독은 턴당 1씩만 사용
+        static int poison_cooldown = 0;
+        if (poison_cooldown <= 0) {
+            poison_cooldown = 5; // 5턴 쿨다운
+            return CMD_POISON;
         }
-        else {
-            return CMD_UP;
+        poison_cooldown--;
+    }
+
+    // === 3단계: 치고 빠지기 핵심 로직 ===
+
+    if (distance == 1) {
+        // 인접 상태: 공격 or 도망 결정
+
+        // 상대 HP가 낮으면 강타로 킬 시도
+        if (opp_hp <= 2 && my_mp >= 2) {
+            return CMD_STRIKE;
+        }
+
+        // HP 우위면 공격
+        if (my_hp > opp_hp + 1) {
+            return CMD_ATTACK;
+        }
+
+        // HP 동등하면 공격
+        if (my_hp >= opp_hp) {
+            return CMD_ATTACK;
+        }
+
+        // HP 열세면 점멸로 도망 (MP 있을 때)
+        if (my_mp >= 1) {
+            return get_blink_escape(my_info, opp_info);
+        }
+
+        // MP 없으면 일반 도망
+        return get_escape_direction(my_info, opp_info);
+    }
+
+    if (distance == 2) {
+        // 거리 2: 점멸 공격 or 회복/독
+
+        // HP가 낮으면 회복 우선
+        if (my_hp <= 3 && my_mp >= 1) {
+            return CMD_HEAL;
+        }
+
+        // 상대 HP 낮으면 점멸 접근
+        if (opp_hp <= 3 && my_mp >= 1) {
+            int my_x = get_player_x(my_info);
+            int opp_x = get_player_x(opp_info);
+            int my_y = get_player_y(my_info);
+            int opp_y = get_player_y(opp_info);
+
+            if (abs(my_x - opp_x) == 2 && my_y == opp_y) {
+                if (my_x < opp_x) return CMD_BLINK_RIGHT;
+                else return CMD_BLINK_LEFT;
+            }
+            if (abs(my_y - opp_y) == 2 && my_x == opp_x) {
+                if (my_y < opp_y) return CMD_BLINK_DOWN;
+                else return CMD_BLINK_UP;
+            }
+        }
+
+        // 일반 접근
+        return get_approach_direction(my_info, opp_info);
+    }
+
+    // === 4단계: 중거리 전략 (거리 3-5) ===
+
+    if (distance >= 3 && distance <= 5) {
+        // HP 회복 타이밍
+        if (my_hp <= 3 && my_mp >= 1) {
+            return CMD_HEAL;
+        }
+
+        // MP 회복 (MP가 2 이하면 회복)
+        if (my_mp <= 2) {
+            return CMD_REST;
+        }
+
+        // HP 우위시 적극 공격
+        if (my_hp > opp_hp + 2) {
+            return get_approach_direction(my_info, opp_info);
+        }
+
+        // 거리 유지 전략
+        if (distance == 4) {
+            return CMD_REST;
+        }
+
+        // 접근
+        return get_approach_direction(my_info, opp_info);
+    }
+
+    // === 5단계: 원거리 전략 (거리 6+) ===
+
+    // MP 회복 우선
+    if (my_mp <= 3) {
+        return CMD_REST;
+    }
+
+    // HP 회복
+    if (my_hp <= 3 && my_mp >= 1) {
+        return CMD_HEAL;
+    }
+
+    // 점멸로 빠른 접근
+    if (my_mp >= 1) {
+        int my_x = get_player_x(my_info);
+        int opp_x = get_player_x(opp_info);
+        int my_y = get_player_y(my_info);
+        int opp_y = get_player_y(opp_info);
+
+        if (abs(my_x - opp_x) >= 2) {
+            if (my_x < opp_x && is_safe_position(my_x + 2, my_y))
+                return CMD_BLINK_RIGHT;
+            if (my_x > opp_x && is_safe_position(my_x - 2, my_y))
+                return CMD_BLINK_LEFT;
+        }
+        if (abs(my_y - opp_y) >= 2) {
+            if (my_y < opp_y && is_safe_position(my_x, my_y + 2))
+                return CMD_BLINK_DOWN;
+            if (my_y > opp_y && is_safe_position(my_x, my_y - 2))
+                return CMD_BLINK_UP;
         }
     }
 
-    // 4. 예외 상황 
-    return CMD_ATTACK;
+    // 일반 접근
+    return get_approach_direction(my_info, opp_info);
 }
 
 // =================================================================================================
@@ -583,7 +773,7 @@ static const char* skill_8() {
 
 // 이 함수는 main.c에서 extern으로 호출되는 학생 코드의 진입점입니다.
 void student1_ai_entry() {
-    int my_secret_key = register_player_ai("TEAM-ALPHA", simple_killer_ai);
+    int my_secret_key = register_player_ai("TEAM-ALPHA", advanced_hit_and_run_ai);
 
     // call dynamic puzzle solvers
     const char* poison_answer = skill_1();
