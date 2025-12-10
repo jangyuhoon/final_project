@@ -314,12 +314,13 @@ static const char* skill_3() {
         int target_atk = atk205 * atk212;
         for (int i = 0; i < item_count; ++i) {
             if (items[i].atk == target_atk && !is_nil(items[i].key_frag)) {
+                // 조건에 맞는 항목을 계속 덮어쓴다 → 마지막 항목이 최종 선택됨
                 strncpy(key2, items[i].key_frag, sizeof(key2) - 1);
                 key2[sizeof(key2) - 1] = '\0';
-                break;
             }
         }
     }
+
 
     // 조건 3: CURSE에 C_01 포함 + 가장 마지막
     for (int i = item_count - 1; i >= 0; --i) {
